@@ -24,7 +24,7 @@ const HTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>双人共享文本</title>
+<title>🔐 双人共享文本</title>
 <style>
   html, body { height: 100%; margin: 0; }
   body { background: #fff; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
@@ -44,6 +44,10 @@ const HTML = `<!DOCTYPE html>
           "PingFang SC", "Microsoft YaHei", sans-serif;
     -webkit-appearance: none; background: transparent; color: #111;
   }
+  #boxL { background: #e8f1fc; color: #1a4e8a; }
+  #boxR { background: #e9f6ec; color: #1c6b3c; }
+  #boxL::placeholder { color: #9db9d8; }
+  #boxR::placeholder { color: #a4c8b0; }
   @media (max-width: 640px) {
     #panels { flex-direction: column; }
     .panel + .panel { border-left: 0; border-top: 1px solid #eee; }
@@ -77,11 +81,11 @@ const HTML = `<!DOCTYPE html>
 <body>
 <div id="panels">
   <div class="panel">
-    <div class="label"><span>左侧</span><span class="who" id="whoL"></span></div>
+    <div class="label"><span>💠 左侧</span><span class="who" id="whoL"></span></div>
     <textarea id="boxL" placeholder="左侧输入…" spellcheck="false"></textarea>
   </div>
   <div class="panel">
-    <div class="label"><span>右侧</span><span class="who" id="whoR"></span></div>
+    <div class="label"><span>🍀 右侧</span><span class="who" id="whoR"></span></div>
     <textarea id="boxR" placeholder="右侧输入…" spellcheck="false"></textarea>
   </div>
 </div>
@@ -89,9 +93,10 @@ const HTML = `<!DOCTYPE html>
 <div id="status">连接中…</div>
 <div id="auth" style="display:none">
   <div id="authBox">
+    <div style="font-size:40px;margin-bottom:12px">🔐</div>
     <input id="pwd" type="password" placeholder="输入访问密码" autocomplete="off">
-    <input id="roomInput" type="text" placeholder="房间号（不填为默认房间）" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <button id="go">进入</button>
+    <input id="roomInput" type="text" placeholder="🏠 房间号（不填为默认房间）" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="go">🚀 进入</button>
     <div id="authErr"></div>
   </div>
 </div>
@@ -124,7 +129,7 @@ if (roomFromUrl) {
   roomInput.value = sessionStorage.getItem('pan_room');
 }
 function refreshRoomLabel() {
-  roomDiv.textContent = room === 'default' ? '' : ('房间: ' + room);
+  roomDiv.textContent = room === 'default' ? '' : ('🏠 ' + room);
 }
 refreshRoomLabel();
 
@@ -135,6 +140,7 @@ document.getElementById(mySide === 'left' ? 'whoL' : 'whoR').textContent = '（�
 let ws = null, reconnectTimer = null, statusTimer = null;
 let authed = false, needAuth = false;
 let password = sessionStorage.getItem('pan_pwd') || '';
+let authTimer = null;
 
 function setStatus(txt, keep) {
   status.textContent = txt;
@@ -157,9 +163,12 @@ function applyUpdate(side, text) {
 }
 
 function showAuth(msg) {
+  const wasHidden = authDiv.style.display !== 'flex';
   authDiv.style.display = 'flex';
   if (msg) authErr.textContent = msg;
-  pwdInput.focus();
+  // 只有对话框刚弹出时才聚焦密码框；已显示时（比如重连）不抢焦点，
+  // 避免手机上正在输房间号时光标被拽走
+  if (wasHidden) pwdInput.focus();
 }
 function hideAuth() {
   authDiv.style.display = 'none';
@@ -179,6 +188,7 @@ function connect() {
     try { msg = JSON.parse(e.data); } catch (_) { return; }
 
     if (msg.type === 'auth_ok') {
+      clearTimeout(authTimer);
       authed = true; needAuth = false;
       hideAuth();
       setStatus('已连接', true);
@@ -186,11 +196,19 @@ function connect() {
     }
     if (msg.type === 'auth_required') {
       needAuth = true; authed = false;
-      showAuth();
-      setStatus('需要密码', true);
+      // 不立即弹窗：等 800ms 看自动登录（sessionStorage 里的密码）是否成功，
+      // 成功则弹窗从不出现，避免"一闪而过"
+      clearTimeout(authTimer);
+      authTimer = setTimeout(() => {
+        if (!authed) {
+          showAuth();
+          setStatus('需要密码', true);
+        }
+      }, 800);
       return;
     }
     if (msg.type === 'auth_fail') {
+      clearTimeout(authTimer);
       needAuth = true; authed = false;
       password = '';
       sessionStorage.removeItem('pan_pwd');
@@ -308,12 +326,13 @@ export class TextSync extends DurableObject {
     this.ctx.acceptWebSocket(server);
 
     const id = crypto.randomUUID();
-    server.serializeAttachment({ id });
+    server.serializeAttachment({ id, authed: false });
     this.sessions.set(server, { id, authed: false });
 
     if (!this.env.PASSWORD) {
       const session = this.sessions.get(server);
       session.authed = true;
+      server.serializeAttachment({ id: session.id, authed: true });
       const { left, right } = await this.getTexts();
       server.send(JSON.stringify({ type: 'auth_ok' }));
       server.send(JSON.stringify({ type: 'init', left, right }));
@@ -335,6 +354,7 @@ export class TextSync extends DurableObject {
         const ok = await constantTimeEqual(msg.password, this.env.PASSWORD || '');
         if (ok && this.env.PASSWORD) {
           session.authed = true;
+          ws.serializeAttachment({ id: session.id, authed: true });
           const { left, right } = await this.getTexts();
           ws.send(JSON.stringify({ type: 'auth_ok' }));
           ws.send(JSON.stringify({ type: 'init', left, right }));
@@ -349,6 +369,8 @@ export class TextSync extends DurableObject {
     if (msg.type === 'update' && SIDES.includes(msg.side) && typeof msg.text === 'string') {
       const text = msg.text.slice(0, MAX_TEXT_LEN);
       await this.ctx.storage.put('text:' + msg.side, text);
+      // 每次写入后重置：24 小时后清空房间数据
+      await this.ctx.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
 
       const data = JSON.stringify({ type: 'update', side: msg.side, text });
       this.ctx.getWebSockets().forEach((client) => {
@@ -370,5 +392,11 @@ export class TextSync extends DurableObject {
   async webSocketError(ws, error) {
     this.sessions.delete(ws);
     try { ws.close(1011, 'WebSocket error'); } catch (_) {}
+  }
+
+  // 24 小时到期后清空房间数据
+  async alarm() {
+    await this.ctx.storage.delete('text:left');
+    await this.ctx.storage.delete('text:right');
   }
 }
