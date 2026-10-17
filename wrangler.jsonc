@@ -1,1 +1,21 @@
-{"compatibility_date":"2025-01-01","durable_objects":{"bindings":[{"class_name":"TextSync","name":"TEXT_SYNC"}]},"main":"worker.js","migrations":[{"new_sqlite_classes":["TextSync"],"tag":"v1"}],"name":"pan"}
+{
+  "compatibility_date": "2025-01-01",
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "TextSync",
+        "name": "TEXT_SYNC"
+      }
+    ]
+  },
+  "main": "worker.js",
+  "name": "pan",
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TextSync"
+      ]
+    }
+  ]
+}
