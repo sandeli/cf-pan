@@ -62,6 +62,7 @@ const HTML = `<!DOCTYPE html>
   #authBox input {
     font-size: 16px; padding: 10px 14px; border: 1px solid #ddd;
     border-radius: 8px; outline: none; width: 220px;
+    display: block; margin: 0 auto 10px;
   }
   #authBox button {
     font-size: 16px; padding: 10px 20px; margin-left: 8px;
@@ -89,6 +90,7 @@ const HTML = `<!DOCTYPE html>
 <div id="auth" style="display:none">
   <div id="authBox">
     <input id="pwd" type="password" placeholder="输入访问密码" autocomplete="off">
+    <input id="roomInput" type="text" placeholder="房间号（不填为默认房间）" autocomplete="off" autocapitalize="off" spellcheck="false">
     <button id="go">进入</button>
     <div id="authErr"></div>
   </div>
@@ -99,6 +101,7 @@ const boxR = document.getElementById('boxR');
 const status = document.getElementById('status');
 const authDiv = document.getElementById('auth');
 const pwdInput = document.getElementById('pwd');
+const roomInput = document.getElementById('roomInput');
 const authErr = document.getElementById('authErr');
 const roomDiv = document.getElementById('room');
 
@@ -106,8 +109,24 @@ const boxes = { left: boxL, right: boxR };
 const timers = { left: null, right: null };
 
 const params = new URLSearchParams(location.search);
-const room = (params.get('room') || 'default').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64) || 'default';
-roomDiv.textContent = room === 'default' ? '' : ('房间: ' + room);
+
+function cleanRoom(v) {
+  return String(v || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64) || 'default';
+}
+
+// 房间优先级：URL 参数 > 输入框/上次使用 > 默认
+let room = cleanRoom(params.get('room') || sessionStorage.getItem('pan_room') || 'default');
+const roomFromUrl = !!params.get('room');
+if (roomFromUrl) {
+  // URL 指定了房间，直接用，不用再填
+  roomInput.style.display = 'none';
+} else if (sessionStorage.getItem('pan_room')) {
+  roomInput.value = sessionStorage.getItem('pan_room');
+}
+function refreshRoomLabel() {
+  roomDiv.textContent = room === 'default' ? '' : ('房间: ' + room);
+}
+refreshRoomLabel();
 
 // 我是哪一边： ?side=left|right，不指定则默认为 left
 const mySide = params.get('side') === 'right' ? 'right' : 'left';
@@ -204,12 +223,18 @@ function connect() {
 function doAuth() {
   password = pwdInput.value;
   sessionStorage.setItem('pan_pwd', password);
+  if (!roomFromUrl) {
+    room = cleanRoom(roomInput.value);
+    sessionStorage.setItem('pan_room', room);
+    refreshRoomLabel();
+  }
   hideAuth();
   try { ws.close(); } catch (_) {}
   connect();
 }
 document.getElementById('go').addEventListener('click', doAuth);
 pwdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAuth(); });
+roomInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAuth(); });
 
 // 每一边独立防抖、独立同步；只发送自己这一边的内容
 // （也可以编辑对方那一栏，会同样同步过去）
